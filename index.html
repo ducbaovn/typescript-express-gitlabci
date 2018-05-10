@@ -1,0 +1,29 @@
+<script src="https://js.braintreegateway.com/js/braintree-2.32.1.min.js"></script>
+<script>
+    var client = new braintree.api.Client({clientToken: 'eyJ2ZXJzaW9uIjoyLCJhdXRob3JpemF0aW9uRmluZ2VycHJpbnQiOiIzNGRhNGQ5Mzg2YzJiZDgyYjRmYzFiMzNhYTU5OWM5MDZiYmRiMTdkYzZlMzIzYmY3Mzk4MmZmNzZmNGI0ZjBlfGNyZWF0ZWRfYXQ9MjAxOC0wNC0yMFQwMzowMDowNy45MjY3MTg0NjMrMDAwMFx1MDAyNm1lcmNoYW50X2lkPWdtam5oeTM3dHZkODl3N3FcdTAwMjZwdWJsaWNfa2V5PXBycG4zem40anl2cXQ3OGQiLCJjb25maWdVcmwiOiJodHRwczovL2FwaS5zYW5kYm94LmJyYWludHJlZWdhdGV3YXkuY29tOjQ0My9tZXJjaGFudHMvZ21qbmh5Mzd0dmQ4OXc3cS9jbGllbnRfYXBpL3YxL2NvbmZpZ3VyYXRpb24iLCJjaGFsbGVuZ2VzIjpbXSwiZW52aXJvbm1lbnQiOiJzYW5kYm94IiwiY2xpZW50QXBpVXJsIjoiaHR0cHM6Ly9hcGkuc2FuZGJveC5icmFpbnRyZWVnYXRld2F5LmNvbTo0NDMvbWVyY2hhbnRzL2dtam5oeTM3dHZkODl3N3EvY2xpZW50X2FwaSIsImFzc2V0c1VybCI6Imh0dHBzOi8vYXNzZXRzLmJyYWludHJlZWdhdGV3YXkuY29tIiwiYXV0aFVybCI6Imh0dHBzOi8vYXV0aC52ZW5tby5zYW5kYm94LmJyYWludHJlZWdhdGV3YXkuY29tIiwiYW5hbHl0aWNzIjp7InVybCI6Imh0dHBzOi8vY2xpZW50LWFuYWx5dGljcy5zYW5kYm94LmJyYWludHJlZWdhdGV3YXkuY29tL2dtam5oeTM3dHZkODl3N3EifSwidGhyZWVEU2VjdXJlRW5hYmxlZCI6dHJ1ZSwicGF5cGFsRW5hYmxlZCI6dHJ1ZSwicGF5cGFsIjp7ImRpc3BsYXlOYW1lIjoiVmVudHVzbyIsImNsaWVudElkIjpudWxsLCJwcml2YWN5VXJsIjoiaHR0cDovL2V4YW1wbGUuY29tL3BwIiwidXNlckFncmVlbWVudFVybCI6Imh0dHA6Ly9leGFtcGxlLmNvbS90b3MiLCJiYXNlVXJsIjoiaHR0cHM6Ly9hc3NldHMuYnJhaW50cmVlZ2F0ZXdheS5jb20iLCJhc3NldHNVcmwiOiJodHRwczovL2NoZWNrb3V0LnBheXBhbC5jb20iLCJkaXJlY3RCYXNlVXJsIjpudWxsLCJhbGxvd0h0dHAiOnRydWUsImVudmlyb25tZW50Tm9OZXR3b3JrIjp0cnVlLCJlbnZpcm9ubWVudCI6Im9mZmxpbmUiLCJ1bnZldHRlZE1lcmNoYW50IjpmYWxzZSwiYnJhaW50cmVlQ2xpZW50SWQiOiJtYXN0ZXJjbGllbnQzIiwiYmlsbGluZ0FncmVlbWVudHNFbmFibGVkIjp0cnVlLCJtZXJjaGFudEFjY291bnRJZCI6InZlbnR1c28iLCJjdXJyZW5jeUlzb0NvZGUiOiJVU0QifSwibWVyY2hhbnRJZCI6Imdtam5oeTM3dHZkODl3N3EiLCJ2ZW5tbyI6Im9mZiJ9'});
+
+    client.tokenizeCard({
+        number: '5555555555554444',
+        expirationDate: '10/20'
+    }, function (err, nonce) {
+    // Send nonce to your server
+        console.log(nonce);
+    });
+    // braintree.client.create({
+    //     authorization: ''
+    // }, function (err, client) {
+    //     console.log('err: ', err);
+    //     var data = {
+    //         number: '5555555555554444',
+    //         expirationDate: '10/20'
+    //     }
+    //     client.request({
+    //         endpoint: 'payment_methods/credit_cards',
+    //         method: 'post',
+    //         data: data
+    //     }, function (err, nonce) {
+    //         // Send nonce to your server
+    //         console.log(nonce);
+    //     });
+    // });
+</script>

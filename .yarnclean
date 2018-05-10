@@ -1,0 +1,63 @@
+#ignore specific files for tslint
+!lines.js
+!parse.js
+!lintError.js
+#ignore specific files for clean-css
+!url-rewriter.js
+!url-rebase.js
+#ignore specific files for braintree
+!credit_card_defaults.js
+!credit_card_numbers.js
+!merchant_account.js
+!nonces.js
+!transaction_amounts.js
+!venmo_sdk.js
+!test.js
+
+# test directories
+__tests__
+test
+tests
+powered-test
+
+# asset directories
+docs
+doc
+website
+images
+assets
+
+# examples
+example
+examples
+
+# code coverage directories
+coverage
+.nyc_output
+
+# build scripts
+Makefile
+Gulpfile.js
+Gruntfile.js
+
+# configs
+.tern-project
+.gitattributes
+.editorconfig
+.*ignore
+.eslintrc
+.jshintrc
+.flowconfig
+.documentup.json
+.yarn-metadata.json
+.*.yml
+*.yml
+
+# misc
+*.gz
+*.md
+*.markdown
+LICENSE
+LICENSE.BSD
+LICENSE.DOCS
+AUTHORS

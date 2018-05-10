@@ -1,0 +1,116 @@
+port: 3000
+
+database:
+    postgres:
+        host: 127.0.0.1
+        port: 5432
+        user: postgres
+        password: postgres
+        database: icondo
+        charset: utf8mb4
+        debug: false
+    redis:
+        host: redis
+        port: 6379
+        db: "0"
+        prefix: dev
+    firebase:
+        file: firebase.json
+        database: https://icondo.firebaseio.com
+
+scheduler:
+    debug: false
+    prefix: "dev:icondo:scheduler:"
+    skipConfig: false
+    restore: true
+    redis:
+        host: localhost
+        port: 6379
+        db: "0"
+
+mailer:
+    # Mailgun option
+    mailGun:
+        apiKey: <your api key>
+        domain: <your domain>
+        sender: <your marketing email>
+    generator:
+        name: foobar
+        link: www.foobar.com
+        logo: foobar
+        iOSAppUrl: <your iOS app url>
+        androidAppUrl: <your andoird app url>
+        privacyPolicyUrl: <your privacy policy app url>
+        contactEmail: <your contact email>
+
+session:
+    expire: 30 # days
+    whiteList:
+        - test
+
+log:
+    # If false, prevent application from exist when something odd happen.
+    exitOnError: false
+    # Console logging, use in development only.
+    console:
+        level: debug
+        handleExceptions: true
+        timestamp: true
+        json: false
+        colorize: true
+    # File logging, file will be put in "logs" folder.
+    file:
+        process:
+            level: debug # Minimum log level which will be appear, Note: error > info > verbose > debug.
+            name: process.log
+            maxsize: 5242880
+            maxFiles: 1
+            handleExceptions: true
+            humanReadableUnhandledException: false
+            json: true
+            colorize: true
+        transport:
+            level: debug # Minimum log level which will be appear, Note: error > info > verbose > debug.
+            name: transport.log
+            maxsize: 5242880
+            maxFiles: 1
+            handleExceptions: true
+            humanReadableUnhandledException: false
+            json: true
+            colorize: true
+    logentries:
+        processToken:
+        transportToken:
+
+sms:
+    accountSid: <your sid>
+    authToken: <your token>
+    area: "+84"
+    sender: <your sender>
+    force: false
+    sandbox: false
+    sendEmail: false # if sendEmail == true ==> send email and don't send sms. Server dev will return code for value
+
+payment:
+    brainTree:
+        merchantID: <your Merchant ID:>
+        publicKey: <your public key>
+        privateKey: <your private Key>
+
+storage:
+    awsBucketName: ventuso
+    opts:
+        aws:
+            path: images/
+            region: us-west-2
+            acl: public-read
+            accessKeyId: <Your access key here>
+            secretAccessKey: <Your secret key here>
+
+fcm:
+    serverKey: <Your FCM key here>
+
+
+
+
+

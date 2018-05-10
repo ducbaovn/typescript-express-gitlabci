@@ -1,0 +1,343 @@
+# Required
+image: docker:17.03.0-ce
+services:
+    - docker:17.03.0-ce-dind
+# --------
+
+stages:
+    - build
+    - release
+    - deploy
+    - destroy
+
+.portainer: &portainer_config
+    STACK_NAME: $CI_PROJECT_NAME-$CI_COMMIT_REF_NAME
+    PORTAINER_USER: $AGENT_USER
+    PORTAINER_PASSWORD: $AGENT_PASSWORD
+
+.aws: &aws_config
+    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+    AWS_REGION: $AWS_REGION
+    AWS_EB_ENVIRONMENT: $AWS_EB_ENVIRONMENT
+    AWS_EB_OUTPUT: json
+    AWS_EB_BUCKET: $AWS_EB_BUCKET
+    AWS_EB_AUTH_FILE: $AWS_EB_AUTH_FILE
+    AWS_EB_PORT: $AWS_EB_PORT
+
+.minio: &minio_config
+    MINIO_ACCESS_KEY: $MEDIA_ACCESS_KEY
+    MINIO_ALIAS: media
+    MINIO_ENDPOINT: $MEDIA_ENDPOINT
+    MINIO_SECRET_KEY: $MEDIA_SECRET_KEY
+
+.ssh_demo: &ssh_config
+    DEPLOY_FOLDER: ~/projects/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME-$CI_COMMIT_REF_NAME
+    USER: $VENTUSO_PC3_USER
+    HOST: $VENTUSO_PC3_IP
+    SSH_ID_KEY: $SSH_PRIVATE_KEY
+
+.build: &build_template
+    stage: build
+    image: vothanhkiet/alpine-node-builder:latest
+    script:
+        - npm install --quiet
+        - gulp build:staging
+    cache:
+        untracked: true
+        key: "$CI_JOB_STAGE-$CI_COMMIT_REF_NAME"
+        paths:
+            - node_modules/
+    artifacts:
+        name: archive
+        expire_in: 1 week
+        paths:
+            - release/
+            - .ebs/
+
+.release: &release_template
+    stage: release
+    variables: &disable_git
+        # Disable git checkout for this stage, optimize build speed
+        GIT_STRATEGY: none
+    before_script:
+        - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.ventuso.net
+    script:
+        - cd release
+        - docker build -t $CI_REGISTRY_IMAGE:$CI_BUILD_REF_NAME --rm=true .
+        - echo $CI_BUILD_REF_NAME
+        - docker push $CI_REGISTRY_IMAGE:$CI_BUILD_REF_NAME
+
+.deploy: &deploy_template
+    stage: deploy
+    image: vothanhkiet/alpine-tools:3.7
+    before_script:
+        - mc config host add $MINIO_ALIAS $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY S3v4
+        - |-
+            export PORTAINER_TOKEN=$(curl --silent -X POST \
+                https://manager.ventuso.net/api/auth \
+                -H 'Cache-Control: no-cache' \
+                -H 'Content-Type: application/json' \
+                -d '{
+                    "Username": "'$PORTAINER_USER'",
+                    "Password": "'$PORTAINER_PASSWORD'"
+                }' | jq -r '.jwt')
+        - |-
+            export PORTAINER_ENDPOINT_ID=$(curl --silent -X GET \
+                https://manager.ventuso.net/api/endpoints \
+                -H 'Authorization: Bearer '$PORTAINER_TOKEN'' \
+                -H 'Cache-Control: no-cache' \
+                -H 'Content-Type: application/json' | \
+                jq -r '.[] | select (.Name == "local") | .Id')
+        - |-
+            export PORTAINER_SWARM_ID=$(curl --silent -X GET \
+                https://manager.ventuso.net/api/endpoints/$PORTAINER_ENDPOINT_ID/docker/info \
+                -H 'Authorization: Bearer '$PORTAINER_TOKEN'' \
+                -H 'Cache-Control: no-cache' \
+                -H 'Content-Type: application/json' | \
+                jq -r '.Swarm.Cluster.ID')
+    script:
+        - echo "Deploy to Docker Swarm"
+        - mc cp $MINIO_ALIAS/$DEPLOY_PLAN swarm.yml
+        - |-
+            export OLD_STACK_ID=$(curl --silent -X GET \
+                https://manager.ventuso.net/api/endpoints/$PORTAINER_ENDPOINT_ID/stacks \
+                -H 'Authorization: Bearer '$PORTAINER_TOKEN'' \
+                -H 'Cache-Control: no-cache' \
+                -H 'Content-Type: application/json' | \
+                jq --arg name $STACK_NAME -r '.[] | select (.Name == $name) | .Id')
+        - |-
+            if [ -n "$OLD_STACK_ID" ]; then
+                echo "Found old deployment, should delete it first"
+                curl --silent --fail --show-error \
+                    -X DELETE https://manager.ventuso.net/api/endpoints/$PORTAINER_ENDPOINT_ID/stacks/$OLD_STACK_ID \
+                    -H 'Authorization: Bearer '$PORTAINER_TOKEN'' \
+                    -H 'Cache-Control: no-cache'
+            else
+                echo "Continue"
+            fi
+        - |-
+            curl --silent --fail --show-error \
+                -X POST https://manager.ventuso.net/api/endpoints/$PORTAINER_ENDPOINT_ID/stacks?method=file \
+                -H 'Authorization: Bearer '$PORTAINER_TOKEN'' \
+                -H 'Cache-Control: no-cache' \
+                -F 'SwarmID='$PORTAINER_SWARM_ID'' \
+                -F 'Name='$STACK_NAME'' \
+                -F 'Env=[
+                        {
+                            "name": "MINIO_ACCESS_KEY",
+                            "value": "'$MEDIA_ACCESS_KEY'"
+                        },
+                        {
+                            "name":"MINIO_ALIAS",
+                            "value": "ventuso"
+                        },
+                        {
+                            "name": "MINIO_ENDPOINT",
+                            "value": "'$MEDIA_ENDPOINT'"
+                        },
+                        {
+                            "name": "MINIO_SECRET_KEY",
+                            "value": "'$MEDIA_SECRET_KEY'"
+                        }
+                    ]' \
+                -F 'file=@./swarm.yml'
+        - echo "Done"
+
+.deploy_eb: &deploy_eb_template
+    stage: deploy
+    image: vothanhkiet/alpine-tools:3.7
+    script:
+        - echo "Deploy to ElasticBeanstalk"
+        - mkdir ~/.aws/
+        - touch ~/.aws/credentials
+        - printf "[default]\naws_access_key_id = %s\naws_secret_access_key = %s\n" "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" >> ~/.aws/credentials
+        - touch ~/.aws/config
+        - printf "[default]\nregion = %s\noutput = %s\n" "$AWS_REGION" "json" >> ~/.aws/config
+        - cp -R ./.ebs ~/eb
+        - |-
+            cat ~/eb/Dockerrun.aws.json.tpl |
+            jq --arg image "$CI_REGISTRY_IMAGE:$CI_BUILD_REF_NAME" '.Image.Name = $image' |
+            jq --arg port $AWS_EB_PORT '.Ports[0].ContainerPort = $port' |
+            jq --arg bucket $AWS_EB_BUCKET '.Authentication.Bucket = $bucket' |
+            jq --arg key $AWS_EB_AUTH_FILE '.Authentication.Key = $key' |
+            cat > ~/eb/Dockerrun.aws.json
+        - cd ~/eb && rm Dockerrun.aws.json.tpl
+        - printf '\n' | eb init --region $AWS_REGION iCondo && eb deploy $AWS_EB_ENVIRONMENT --timeout 30
+        - echo "Done"
+    variables:
+        <<: [*aws_config, *minio_config]
+
+.destroy: &destroy_template
+    stage: destroy
+    image: vothanhkiet/alpine-tools:3.7
+    when: manual
+    script:
+        - echo "Destroy from server"
+        - |-
+            export OLD_STACK_ID=$(curl --silent -X GET \
+                https://manager.ventuso.net/api/endpoints/$PORTAINER_ENDPOINT_ID/stacks \
+                -H 'Authorization: Bearer '$PORTAINER_TOKEN'' \
+                -H 'Cache-Control: no-cache' \
+                -H 'Content-Type: application/json' | \
+                jq --arg name $STACK_NAME -r '.[] | select (.Name == $name) | .Id')
+        - |-
+            if [ -n "$OLD_STACK_ID" ]; then
+                echo "Found old deployment, delete it"
+                curl --silent --fail --show-error \
+                    -X DELETE https://manager.ventuso.net/api/endpoints/$PORTAINER_ENDPOINT_ID/stacks/$OLD_STACK_ID \
+                    -H 'Authorization: Bearer '$PORTAINER_TOKEN'' \
+                    -H 'Cache-Control: no-cache'
+            else
+                echo "Continue"
+            fi
+    variables:
+        <<: [*minio_config, *portainer_config]
+
+build:
+    <<: *build_template
+    only:
+        - develop
+        - test1
+        - test2
+        - test3
+        - staging
+        - production
+
+release:
+    <<: *release_template
+    only:
+        - develop
+        - test1
+        - test2
+        - test3
+        - staging
+        - production
+
+deploy_develop:
+    <<: *deploy_template
+    variables:
+        <<: [*minio_config, *ssh_config, *portainer_config]
+        DEPLOY_PLAN: $DEV_DEPLOY_PLAN
+    environment:
+        name: develop
+        url: https://icondo-dev-rest.ventuso.net
+    only:
+        - develop
+
+deploy_test:
+    <<: *deploy_template
+    variables:
+        <<: [*minio_config, *ssh_config, *portainer_config]
+        DEPLOY_PLAN: $TEST_DEPLOY_PLAN
+    environment:
+        name: test
+        url: https://icondo-test-rest.ventuso.net
+    only:
+        - test
+
+deploy_test1:
+    <<: *deploy_template
+    variables:
+        <<: [*minio_config, *ssh_config, *portainer_config]
+        DEPLOY_PLAN: $TEST1_DEPLOY_PLAN
+    environment:
+        name: test1
+        url: https://icondo-test1-rest.ventuso.net
+    only:
+        - test1
+
+deploy_test2:
+    <<: *deploy_template
+    variables:
+        <<: [*minio_config, *ssh_config, *portainer_config]
+        DEPLOY_PLAN: $TEST2_DEPLOY_PLAN
+    environment:
+        name: test2
+        url: https://icondo-test2-rest.ventuso.net
+    only:
+        - test2
+
+deploy_test3:
+    <<: *deploy_template
+    variables:
+        <<: [*minio_config, *ssh_config, *portainer_config]
+        DEPLOY_PLAN: $TEST3_DEPLOY_PLAN
+    environment:
+        name: test3
+        url: https://icondo-test3-rest.ventuso.net
+    only:
+        - test3
+
+deploy_staging:
+    <<: *deploy_template
+    variables:
+        <<: [*minio_config, *ssh_config, *portainer_config]
+        DEPLOY_PLAN: $STAGING_DEPLOY_PLAN
+    environment:
+        name: staging
+        url: https://icondo-sandbox-rest.ventuso.net
+    only:
+        - staging
+
+deploy_production:
+    <<: *deploy_eb_template
+    only:
+        - production
+    environment:
+        name: production
+        url: https://icondo-service.icondo.asia
+
+stop_develop:
+    <<: *destroy_template
+    environment:
+        name: develop
+        url: https://icondo-dev-rest.ventuso.net
+        action: stop
+    only:
+        - develop
+
+stop_test1:
+    <<: *destroy_template
+    environment:
+        name: test1
+        url: https://icondo-test1-rest.ventuso.net
+        action: stop
+    only:
+        - test1
+
+stop_test2:
+    <<: *destroy_template
+    environment:
+        name: test2
+        url: https://icondo-test2-rest.ventuso.net
+        action: stop
+    only:
+        - test2
+
+stop_test3:
+    <<: *destroy_template
+    environment:
+        name: test3
+        url: https://icondo-test3-rest.ventuso.net
+        action: stop
+    only:
+        - test3
+
+stop_test:
+    <<: *destroy_template
+    environment:
+        name: test
+        url: https://icondo-test-rest.ventuso.net
+        action: stop
+    only:
+        - test
+
+stop_staging:
+    <<: *destroy_template
+    environment:
+        name: staging
+        url: https://icondo-sandbox-rest.ventuso.net
+        action: stop
+    only:
+        - staging

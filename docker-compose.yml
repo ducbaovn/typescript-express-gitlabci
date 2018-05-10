@@ -1,0 +1,118 @@
+version: '2.1'
+services:
+    postgres:
+        image: postgres:9.6.2-alpine
+        ports:
+            - 5432:5432
+        networks:
+            - internal
+        environment:
+            - POSTGRES_PASSWORD=postgres
+            - POSTGRES_USER=postgres
+            - POSTGRES_DB=icondo
+        volumes:
+            - ${PWD}/local/postgres:/var/lib/postgresql/data
+            - ${PWD}/docker/development/postgres/initdb.d:/docker-entrypoint-initdb.d
+    redis:
+        image: redis:3.2.8-alpine
+        ports:
+            - 6379:6379
+        networks:
+            - internal
+        volumes:
+            - ${PWD}/local/redis:/data
+    redis-ui:
+        image: diyan/redis-commander
+        networks:
+            - internal
+        ports:
+            - 3010:8081
+        command: --redis-host redis
+    minio:
+        image: minio/minio:edge
+        networks:
+            - internal
+        ports:
+            - 9000:9000
+        environment:
+            - MINIO_ACCESS_KEY=access_key
+            - MINIO_SECRET_KEY=secret_key
+        command: server /export
+        volumes:
+            - $PWD/local/minio/export:/export
+            - $PWD/local/minio/config:/root/.minio
+    astray:
+        image: registry.ventuso.net/rd/astray:staging
+        networks:
+            - internal
+        ports:
+            - 3005:3000
+        environment:
+            - AWS_ACCESS_KEY_ID=access_key
+            - AWS_SECRET_ACCESS_KEY=secret_key
+            - S3_BUCKET=docker
+            - S3_ENDPOINT=http://minio:9000/
+            - DRIVERS=minio
+    create_bucket:
+        image: garland/aws-cli-docker
+        networks:
+            - internal
+        depends_on:
+            - minio
+        environment:
+            - AWS_ACCESS_KEY_ID=access_key
+            - AWS_SECRET_ACCESS_KEY=secret_key
+            - AWS_DEFAULT_REGION=us-east-1
+        command: >
+            /bin/sh -c "
+            while ! nc -vz minio 9000; do sleep 1; done;
+            echo Connected!;
+            date;
+            aws configure set default.s3.signature_version s3v4;
+            aws configure set default.region us-east-1;
+            aws s3api create-bucket \
+                --bucket docker \
+                --endpoint-url=http://minio:9000;"
+        # Note: https://docs.docker.com/docker-for-mac/networking/
+    # rabbitmq:
+    #     image: rabbitmq:3.6.8-alpine
+    #     container_name: rabbitmq
+    #     ports:
+    #         - 5672:5672
+    #     networks:
+    #         - internal
+    #     volumes:
+    #         - ${PWD}/local/rabbitmq:/var/lib/rabbitmq
+    # elastic:
+    #     image: elasticsearch:5.1.1-alpine
+    #     container_name: elastic
+    #     ports:
+    #         - 9200:9200
+    #     networks:
+    #         - internal
+    # kibana:
+    #     image: kibana:5.1.1
+    #     container_name: kibana
+    #     ports:
+    #         - 3003:5601
+    #     networks:
+    #         - internal
+    #     environment:
+    #         - ELASTICSEARCH_URL=http://elastic:9200
+    #     depends_on:
+    #         - elastic
+    #         - logstash
+    # logstash:
+    #     image: logstash:5.1.1
+    #     container_name: logstash
+    #     networks:
+    #         - internal
+    #     volumes:
+    #         - ./build/logs:/home/logstash/logs
+    #         - ./docker/development/logstash:/logstash
+    #     command: logstash -f /logstash/log.conf
+    #     depends_on:
+    #         - elastic
+
+networks:
+    internal:
